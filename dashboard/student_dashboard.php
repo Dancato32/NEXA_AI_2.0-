@@ -749,7 +749,7 @@
                 <span class="nav-label">My Courses</span>
                 <span class="badge">3</span>
             </a>
-            <a href="chess.php" class="nav-item">
+            <a href="games.php" class="nav-item">
                 <i class="fas fa-gamepad"></i>
                 <span class="nav-label">Learning Games</span>
             </a>
