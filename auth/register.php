@@ -124,6 +124,7 @@ function register_student_process() {
         $student = get_student_by_username($username);
         start_user_session($student, 'student');
         
+        
         return [
             'success' => true,
             'message' => 'Registration successful! Redirecting...',
