@@ -1162,25 +1162,25 @@
     available: true,                 // CHANGE THIS TO true
     featured: true                   // CHANGE THIS TO true
 },
-            {
-                id: 'memory-match',
-                title: 'Memory Match',
-                category: 'memory',
-                grade: 'Grade 2-4',
-                subject: 'Memory',
-                icon: 'fa-brain',
-                iconClass: 'memory',
-                description: 'Train your memory with matching card games. Match pairs of words, images, or concepts to win!',
-                tags: ['Memory', 'Concentration'],
-                rating: 4.7,
-                plays: 1500,
-                avgTime: '8 min',
-                skills: 'Memory, Focus',
-                objectives: '• Improve memory retention<br>• Enhance concentration<br>• Develop pattern recognition',
-                link: '#',
-                available: false,
-                featured: false
-            },
+           {
+    id: 'memory-match',
+    title: 'Memory Match',
+    category: 'memory',
+    grade: 'Grade 2-4',
+    subject: 'Memory',
+    icon: 'fa-brain',
+    iconClass: 'memory',
+    description: 'Train your memory with matching card games. Match pairs of words, images, or concepts to win!',
+    tags: ['Memory', 'Concentration'],
+    rating: 4.7,
+    plays: 1500,
+    avgTime: '8 min',
+    skills: 'Memory, Focus',
+    objectives: '• Improve memory retention<br>• Enhance concentration<br>• Develop pattern recognition',
+    link: 'games/memory-match.php',  // Add this path
+    available: true,                 // Change to true
+    featured: true                   // Optional: make it featured
+},
             {
                 id: 'math-puzzle',
                 title: 'Math Puzzle Adventure',

@@ -1,8 +1,8 @@
+
 <?php
 // save_score.php
 session_start();
 require_once '../../includes/config.php';
-
 
 // Add this at the very beginning of save_score.php, after session_start()
 if (isset($_GET['test'])) {
@@ -20,9 +20,6 @@ error_log("=== SAVE SCORE REQUEST ===");
 error_log("POST data: " . print_r($_POST, true));
 error_log("SESSION data: " . print_r($_SESSION, true));
 
-
-
-
 if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'student') {
     error_log("Unauthorized access attempt");
     echo json_encode(['success' => false, 'error' => 'Unauthorized']);
@@ -30,8 +27,8 @@ if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'student') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Get all POST data
-    $student_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+    // Get all POST data - FIXED: Check $_POST directly, not formData names
+    $student_id = isset($_POST['student_id']) ? (int)$_POST['student_id'] : (isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0);
     $game_name = isset($_POST['game_name']) ? trim($_POST['game_name']) : 'unknown';
     $score = isset($_POST['score']) ? (int)$_POST['score'] : 0;
     $level = isset($_POST['level']) ? (int)$_POST['level'] : 1;
