@@ -11,6 +11,33 @@
     $student_name = $_SESSION['first_name'] . ' ' . $_SESSION['last_name'];
     $student_class = $_SESSION['class'] ?? 'Not specified';
     $student_username = $_SESSION['username'] ?? 'Student';
+    $student_id = $_SESSION['user_id'];
+    
+    // Database connection
+    require_once '../includes/config.php';
+    
+    // Get user's game stats from database
+    $stats_query = "SELECT 
+        COUNT(DISTINCT game_name) as total_games_played,
+        COALESCE(SUM(score), 0) as total_score,
+        COALESCE(SUM(play_time), 0) as total_play_time,
+        COALESCE(MAX(CASE WHEN game_name = 'math-blaster' THEN score END), 0) as math_blaster_score
+    FROM game_scores 
+    WHERE student_id = ?";
+    
+    $stmt = mysqli_prepare($conn, $stats_query);
+    mysqli_stmt_bind_param($stmt, 'i', $student_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $user_stats = mysqli_fetch_assoc($result) ?? [];
+    mysqli_stmt_close($stmt);
+    
+    // Get high score for Math Blaster
+    $high_score = $user_stats['math_blaster_score'] ?? 0;
+    $total_score = $user_stats['total_score'] ?? 0;
+    $games_played = $user_stats['total_games_played'] ?? 0;
+    $play_time_minutes = $user_stats['total_play_time'] ?? 0;
+    $play_time_hours = floor($play_time_minutes / 60);
 ?>
 
 <!DOCTYPE html>
@@ -689,6 +716,47 @@
             box-shadow: var(--shadow-md);
         }
 
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            border: 2px dashed var(--gray-300);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            color: var(--gray-400);
+            margin-bottom: 20px;
+        }
+
+        .empty-state h3 {
+            font-size: 1.5rem;
+            color: var(--gray-700);
+            margin-bottom: 10px;
+        }
+
+        .empty-state p {
+            color: var(--gray-600);
+            max-width: 400px;
+            margin: 0 auto 20px;
+        }
+
+        /* Coming Soon Badge */
+        .coming-soon {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, var(--accent), #f97316);
+            color: var(--white);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            z-index: 1;
+        }
+
         /* Scrollbar */
         .games-container::-webkit-scrollbar {
             width: 6px;
@@ -795,7 +863,7 @@
         <!-- Header -->
         <header class="header">
             <div class="header-left">
-                <a href="student-dashboard.php" class="back-btn">
+                <a href="student_dashboard.php" class="back-btn">
                     <i class="fas fa-arrow-left"></i>
                     Dashboard
                 </a>
@@ -825,11 +893,11 @@
             <div class="sidebar-section">
                 <h3 class="sidebar-title">Navigation</h3>
                 <div class="nav-items">
-                    <a href="student-dashboard.php" class="nav-item">
+                    <a href="student_dashboard.php" class="nav-item">
                         <i class="fas fa-home"></i>
                         Dashboard
                     </a>
-                    <a href="ai-tutor.php" class="nav-item">
+                    <a href="student_ai_tutor.php" class="nav-item">
                         <i class="fas fa-robot"></i>
                         AI Tutor
                     </a>
@@ -837,11 +905,11 @@
                         <i class="fas fa-gamepad"></i>
                         Learning Games
                     </a>
-                    <a href="learning-resources.php" class="nav-item">
+                    <a href="#" class="nav-item">
                         <i class="fas fa-book"></i>
                         Resources
                     </a>
-                    <a href="progress.php" class="nav-item">
+                    <a href="#" class="nav-item">
                         <i class="fas fa-chart-line"></i>
                         Progress
                     </a>
@@ -851,7 +919,7 @@
             <div class="sidebar-section">
                 <h3 class="sidebar-title">Game Categories</h3>
                 <div class="nav-items">
-                    <a href="#" class="nav-item category-link" data-category="all">
+                    <a href="#" class="nav-item category-link active" data-category="all">
                         <i class="fas fa-th"></i>
                         All Games
                     </a>
@@ -882,7 +950,7 @@
                             <i class="fas fa-gamepad"></i>
                         </div>
                         <div class="stat-info">
-                            <h3 id="gamesPlayed">0</h3>
+                            <h3 id="gamesPlayed"><?php echo $games_played; ?></h3>
                             <p>Games Played</p>
                         </div>
                     </div>
@@ -892,7 +960,7 @@
                             <i class="fas fa-trophy"></i>
                         </div>
                         <div class="stat-info">
-                            <h3 id="highScore">0</h3>
+                            <h3 id="highScore"><?php echo number_format($high_score); ?></h3>
                             <p>High Score</p>
                         </div>
                     </div>
@@ -917,7 +985,7 @@
                             <i class="fas fa-gamepad"></i>
                         </div>
                         <div class="stat-info">
-                            <h3>24</h3>
+                            <h3 id="totalGames">8</h3>
                             <p>Total Games</p>
                         </div>
                     </div>
@@ -927,7 +995,7 @@
                             <i class="fas fa-trophy"></i>
                         </div>
                         <div class="stat-info">
-                            <h3 id="userScore">0</h3>
+                            <h3 id="userScore"><?php echo number_format($total_score); ?></h3>
                             <p>Your Score</p>
                         </div>
                     </div>
@@ -937,9 +1005,40 @@
                             <i class="fas fa-clock"></i>
                         </div>
                         <div class="stat-info">
-                            <h3 id="playTime">0</h3>
+                            <h3 id="playTime"><?php echo $play_time_hours; ?></h3>
                             <p>Hours Played</p>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Categories -->
+                <div class="categories">
+                    <div class="categories-title">Filter by Category:</div>
+                    <div class="category-filters">
+                        <button class="category-btn active" data-category="all">
+                            <i class="fas fa-th"></i>
+                            All Games
+                        </button>
+                        <button class="category-btn" data-category="math">
+                            <i class="fas fa-calculator"></i>
+                            Math
+                        </button>
+                        <button class="category-btn" data-category="science">
+                            <i class="fas fa-flask"></i>
+                            Science
+                        </button>
+                        <button class="category-btn" data-category="english">
+                            <i class="fas fa-book"></i>
+                            English
+                        </button>
+                        <button class="category-btn" data-category="puzzle">
+                            <i class="fas fa-puzzle-piece"></i>
+                            Puzzle
+                        </button>
+                        <button class="category-btn" data-category="memory">
+                            <i class="fas fa-brain"></i>
+                            Memory
+                        </button>
                     </div>
                 </div>
                 
@@ -950,147 +1049,8 @@
                         Featured Games
                     </h2>
                     
-                    <div class="games-grid">
-                        <!-- Math Blaster Game -->
-                        <div class="game-card" data-game="math-blaster" data-category="math">
-                            <div class="game-header">
-                                <div class="game-icon math">
-                                    <i class="fas fa-calculator"></i>
-                                </div>
-                                <div class="game-info">
-                                    <h3>Math Blaster</h3>
-                                    <p>Grade 4-6 • Math</p>
-                                </div>
-                            </div>
-                            
-                            <div class="game-body">
-                                <p class="game-description">
-                                    Blast through math problems in this exciting space adventure. Solve equations, complete patterns, and earn power-ups!
-                                </p>
-                                
-                                <div class="game-meta">
-                                    <div class="game-tags">
-                                        <span class="game-tag">Arithmetic</span>
-                                        <span class="game-tag">Patterns</span>
-                                    </div>
-                                    <div class="game-rating">
-                                        <i class="fas fa-star"></i>
-                                        <span>4.8</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="game-footer">
-                                <div class="game-stats">
-                                    <div class="game-stat">
-                                        <i class="fas fa-users"></i>
-                                        <span>1.2k plays</span>
-                                    </div>
-                                    <div class="game-stat">
-                                        <i class="fas fa-clock"></i>
-                                        <span>15 min avg</span>
-                                    </div>
-                                </div>
-                                <button class="play-btn play-game-btn">
-                                    <i class="fas fa-play"></i>
-                                    Play Now
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <!-- Science Explorer Game -->
-                        <div class="game-card" data-game="science-explorer" data-category="science">
-                            <div class="game-header">
-                                <div class="game-icon science">
-                                    <i class="fas fa-flask"></i>
-                                </div>
-                                <div class="game-info">
-                                    <h3>Science Explorer</h3>
-                                    <p>Grade 5-7 • Science</p>
-                                </div>
-                            </div>
-                            
-                            <div class="game-body">
-                                <p class="game-description">
-                                    Explore the wonders of science through interactive experiments and challenges. Learn about physics, chemistry, and biology.
-                                </p>
-                                
-                                <div class="game-meta">
-                                    <div class="game-tags">
-                                        <span class="game-tag">Physics</span>
-                                        <span class="game-tag">Chemistry</span>
-                                    </div>
-                                    <div class="game-rating">
-                                        <i class="fas fa-star"></i>
-                                        <span>4.6</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="game-footer">
-                                <div class="game-stats">
-                                    <div class="game-stat">
-                                        <i class="fas fa-users"></i>
-                                        <span>890 plays</span>
-                                    </div>
-                                    <div class="game-stat">
-                                        <i class="fas fa-clock"></i>
-                                        <span>20 min avg</span>
-                                    </div>
-                                </div>
-                                <button class="play-btn play-game-btn">
-                                    <i class="fas fa-play"></i>
-                                    Play Now
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <!-- Word Master Game -->
-                        <div class="game-card" data-game="word-master" data-category="english">
-                            <div class="game-header">
-                                <div class="game-icon english">
-                                    <i class="fas fa-book"></i>
-                                </div>
-                                <div class="game-info">
-                                    <h3>Word Master</h3>
-                                    <p>Grade 3-5 • English</p>
-                                </div>
-                            </div>
-                            
-                            <div class="game-body">
-                                <p class="game-description">
-                                    Master vocabulary, spelling, and grammar through fun word puzzles and challenges. Expand your language skills!
-                                </p>
-                                
-                                <div class="game-meta">
-                                    <div class="game-tags">
-                                        <span class="game-tag">Vocabulary</span>
-                                        <span class="game-tag">Grammar</span>
-                                    </div>
-                                    <div class="game-rating">
-                                        <i class="fas fa-star"></i>
-                                        <span>4.9</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="game-footer">
-                                <div class="game-stats">
-                                    <div class="game-stat">
-                                        <i class="fas fa-users"></i>
-                                        <span>2.1k plays</span>
-                                    </div>
-                                    <div class="game-stat">
-                                        <i class="fas fa-clock"></i>
-                                        <span>10 min avg</span>
-                                    </div>
-                                </div>
-                                <button class="play-btn play-game-btn">
-                                    <i class="fas fa-play"></i>
-                                    Play Now
-                                </button>
-                            </div>
-                        </div>
+                    <div class="games-grid" id="featuredGames">
+                        <!-- Games will be loaded dynamically -->
                     </div>
                 </div>
                 
@@ -1100,36 +1060,6 @@
                         <i class="fas fa-th"></i>
                         All Games
                     </h2>
-                    
-                    <div class="categories">
-                        <div class="categories-title">Filter by Category:</div>
-                        <div class="category-filters">
-                            <button class="category-btn active" data-category="all">
-                                <i class="fas fa-th"></i>
-                                All Games
-                            </button>
-                            <button class="category-btn" data-category="math">
-                                <i class="fas fa-calculator"></i>
-                                Math
-                            </button>
-                            <button class="category-btn" data-category="science">
-                                <i class="fas fa-flask"></i>
-                                Science
-                            </button>
-                            <button class="category-btn" data-category="english">
-                                <i class="fas fa-book"></i>
-                                English
-                            </button>
-                            <button class="category-btn" data-category="puzzle">
-                                <i class="fas fa-puzzle-piece"></i>
-                                Puzzle
-                            </button>
-                            <button class="category-btn" data-category="memory">
-                                <i class="fas fa-brain"></i>
-                                Memory
-                            </button>
-                        </div>
-                    </div>
                     
                     <div class="games-grid" id="gamesGrid">
                         <!-- Games will be loaded dynamically -->
@@ -1173,7 +1103,7 @@
                     </div>
                     
                     <div class="detail-group">
-                        <h4>High Scores</h4>
+                        <h4>Your Stats</h4>
                         <p id="modalGameScores">Your best: 0<br>Class average: 1,250<br>Top score: 2,500</p>
                     </div>
                 </div>
@@ -1192,7 +1122,7 @@
     </div>
 
     <script>
-        // Game Data
+        // Game Data - Only include games that actually exist
         const games = [
             {
                 id: 'math-blaster',
@@ -1209,24 +1139,9 @@
                 avgTime: '15 min',
                 skills: 'Math, Problem Solving',
                 objectives: '• Improve math skills<br>• Enhance problem-solving abilities<br>• Develop logical thinking',
-                link: 'games/math-blaster.php'
-            },
-            {
-                id: 'science-explorer',
-                title: 'Science Explorer',
-                category: 'science',
-                grade: 'Grade 5-7',
-                subject: 'Science',
-                icon: 'fa-flask',
-                iconClass: 'science',
-                description: 'Explore the wonders of science through interactive experiments and challenges. Learn about physics, chemistry, and biology.',
-                tags: ['Physics', 'Chemistry'],
-                rating: 4.6,
-                plays: 890,
-                avgTime: '20 min',
-                skills: 'Science, Observation',
-                objectives: '• Understand scientific concepts<br>• Develop observation skills<br>• Learn experimental methods',
-                link: 'games/science-explorer.php'
+                link: 'math-blaster.php',
+                available: true,
+                featured: true
             },
             {
                 id: 'word-master',
@@ -1243,7 +1158,9 @@
                 avgTime: '10 min',
                 skills: 'Language, Spelling',
                 objectives: '• Expand vocabulary<br>• Improve spelling<br>• Master grammar rules',
-                link: 'games/word-master.php'
+                link: '#',
+                available: false,
+                featured: false
             },
             {
                 id: 'memory-match',
@@ -1260,7 +1177,9 @@
                 avgTime: '8 min',
                 skills: 'Memory, Focus',
                 objectives: '• Improve memory retention<br>• Enhance concentration<br>• Develop pattern recognition',
-                link: 'games/memory-match.php'
+                link: '#',
+                available: false,
+                featured: false
             },
             {
                 id: 'math-puzzle',
@@ -1277,7 +1196,28 @@
                 avgTime: '12 min',
                 skills: 'Logic, Math',
                 objectives: '• Develop logical thinking<br>• Apply math concepts<br>• Solve complex problems',
-                link: 'games/math-puzzle.php'
+                link: '#',
+                available: false,
+                featured: false
+            },
+            {
+                id: 'science-explorer',
+                title: 'Science Explorer',
+                category: 'science',
+                grade: 'Grade 5-7',
+                subject: 'Science',
+                icon: 'fa-flask',
+                iconClass: 'science',
+                description: 'Explore the wonders of science through interactive experiments and challenges. Learn about physics, chemistry, and biology.',
+                tags: ['Physics', 'Chemistry'],
+                rating: 4.6,
+                plays: 890,
+                avgTime: '20 min',
+                skills: 'Science, Observation',
+                objectives: '• Understand scientific concepts<br>• Develop observation skills<br>• Learn experimental methods',
+                link: '#',
+                available: false,
+                featured: true
             },
             {
                 id: 'science-quiz',
@@ -1294,7 +1234,9 @@
                 avgTime: '18 min',
                 skills: 'Knowledge, Speed',
                 objectives: '• Test science knowledge<br>• Improve recall speed<br>• Learn new facts',
-                link: 'games/science-quiz.php'
+                link: '#',
+                available: false,
+                featured: false
             },
             {
                 id: 'grammar-quest',
@@ -1311,7 +1253,9 @@
                 avgTime: '14 min',
                 skills: 'Grammar, Writing',
                 objectives: '• Master grammar rules<br>• Improve writing skills<br>• Learn sentence structure',
-                link: 'games/grammar-quest.php'
+                link: '#',
+                available: false,
+                featured: false
             },
             {
                 id: 'geometry-builder',
@@ -1328,12 +1272,15 @@
                 avgTime: '16 min',
                 skills: 'Geometry, Creativity',
                 objectives: '• Understand geometric shapes<br>• Learn spatial relationships<br>• Develop creative thinking',
-                link: 'games/geometry-builder.php'
+                link: '#',
+                available: false,
+                featured: false
             }
         ];
 
         // DOM Elements
-        const gamesGrid = document.getElementById('gamesGrid');
+        const featuredGamesEl = document.getElementById('featuredGames');
+        const gamesGridEl = document.getElementById('gamesGrid');
         const gameModal = document.getElementById('gameModal');
         const modalGameTitle = document.getElementById('modalGameTitle');
         const modalGameDescription = document.getElementById('modalGameDescription');
@@ -1345,6 +1292,7 @@
         const cancelBtn = document.getElementById('cancelBtn');
         const startGameBtn = document.getElementById('startGameBtn');
         const categoryButtons = document.querySelectorAll('.category-btn, .category-link');
+        const totalGamesEl = document.getElementById('totalGames');
         const gamesPlayedEl = document.getElementById('gamesPlayed');
         const highScoreEl = document.getElementById('highScore');
         const userScoreEl = document.getElementById('userScore');
@@ -1352,21 +1300,71 @@
 
         // Current selected game
         let currentGame = null;
+        let currentCategory = 'all';
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
+            updateStats();
             loadGames();
-            loadUserStats();
             setupEventListeners();
         });
 
+        // Update game stats
+        function updateStats() {
+            totalGamesEl.textContent = games.length;
+            
+            // Get user's high score from PHP
+            const userHighScore = <?php echo $high_score; ?>;
+            const userTotalScore = <?php echo $total_score; ?>;
+            const userGamesPlayed = <?php echo $games_played; ?>;
+            const userPlayTime = <?php echo $play_time_hours; ?>;
+            
+            // Update high score display
+            highScoreEl.textContent = userHighScore.toLocaleString();
+            userScoreEl.textContent = userTotalScore.toLocaleString();
+            gamesPlayedEl.textContent = userGamesPlayed;
+            playTimeEl.textContent = userPlayTime;
+        }
+
         // Load games into grid
         function loadGames() {
-            gamesGrid.innerHTML = '';
+            // Clear grids
+            featuredGamesEl.innerHTML = '';
+            gamesGridEl.innerHTML = '';
             
-            games.forEach(game => {
+            // Filter games by current category
+            const filteredGames = games.filter(game => {
+                return currentCategory === 'all' || game.category === currentCategory;
+            });
+            
+            const availableGames = games.filter(game => game.available);
+            const featuredGames = games.filter(game => game.featured && game.available);
+            
+            if (filteredGames.length === 0) {
+                // Show empty state
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                emptyState.innerHTML = `
+                    <i class="fas fa-gamepad"></i>
+                    <h3>No games found</h3>
+                    <p>There are no games available in this category yet. Check back soon!</p>
+                `;
+                gamesGridEl.appendChild(emptyState);
+                return;
+            }
+            
+            // Load featured games
+            if (featuredGames.length > 0) {
+                featuredGames.forEach(game => {
+                    const gameCard = createGameCard(game);
+                    featuredGamesEl.appendChild(gameCard);
+                });
+            }
+            
+            // Load all games
+            filteredGames.forEach(game => {
                 const gameCard = createGameCard(game);
-                gamesGrid.appendChild(gameCard);
+                gamesGridEl.appendChild(gameCard);
             });
         }
 
@@ -1376,8 +1374,13 @@
             div.className = 'game-card';
             div.dataset.game = game.id;
             div.dataset.category = game.category;
+            div.dataset.available = game.available;
+            
+            // Get user's score for this game from localStorage
+            const userScore = localStorage.getItem(`game_score_${game.id}`) || 0;
             
             div.innerHTML = `
+                ${!game.available ? '<span class="coming-soon">Coming Soon</span>' : ''}
                 <div class="game-header">
                     <div class="game-icon ${game.iconClass}">
                         <i class="fas ${game.icon}"></i>
@@ -1408,14 +1411,16 @@
                             <i class="fas fa-users"></i>
                             <span>${game.plays.toLocaleString()} plays</span>
                         </div>
+                        ${userScore > 0 ? `
                         <div class="game-stat">
-                            <i class="fas fa-clock"></i>
-                            <span>${game.avgTime} avg</span>
+                            <i class="fas fa-trophy"></i>
+                            <span>${parseInt(userScore).toLocaleString()} pts</span>
                         </div>
+                        ` : ''}
                     </div>
-                    <button class="play-btn play-game-btn">
+                    <button class="play-btn play-game-btn" ${!game.available ? 'disabled' : ''}>
                         <i class="fas fa-play"></i>
-                        Play Now
+                        ${game.available ? 'Play Now' : 'Coming Soon'}
                     </button>
                 </div>
             `;
@@ -1425,15 +1430,7 @@
 
         // Filter games by category
         function filterGames(category) {
-            const gameCards = document.querySelectorAll('.game-card');
-            
-            gameCards.forEach(card => {
-                if (category === 'all' || card.dataset.category === category) {
-                    card.style.display = 'flex';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
+            currentCategory = category;
             
             // Update active category buttons
             categoryButtons.forEach(btn => {
@@ -1449,6 +1446,9 @@
                     }
                 }
             });
+            
+            // Reload games with new filter
+            loadGames();
         }
 
         // Show game modal
@@ -1458,19 +1458,20 @@
             
             currentGame = game;
             
+            // Get user's score for this game
+            const userScore = localStorage.getItem(`game_score_${game.id}`) || 0;
+            
             // Update modal content
             modalGameTitle.textContent = game.title;
             modalGameDescription.textContent = game.description;
             modalGameDetails.textContent = `Grade level: ${game.grade}\nDuration: ${game.avgTime}\nSkills: ${game.skills}`;
             modalGameObjectives.innerHTML = game.objectives;
             
-            // Get user stats for this game
-            const userStats = JSON.parse(localStorage.getItem(`game_stats_${game.id}`) || '{}');
-            const userBest = userStats.highScore || 0;
+            // Calculate stats
             const classAvg = Math.floor(game.plays * game.rating * 10);
             const topScore = Math.floor(classAvg * 1.2);
             
-            modalGameScores.textContent = `Your best: ${userBest}\nClass average: ${classAvg.toLocaleString()}\nTop score: ${topScore.toLocaleString()}`;
+            modalGameScores.textContent = `Your best: ${parseInt(userScore).toLocaleString()}\nClass average: ${classAvg.toLocaleString()}\nTop score: ${topScore.toLocaleString()}`;
             
             // Update preview
             gamePreviewContent.innerHTML = `
@@ -1478,9 +1479,19 @@
                     <i class="fas ${game.icon}" style="font-size: 3rem; margin-bottom: 10px;"></i>
                     <h3 style="margin: 0; font-size: 1.5rem;">${game.title}</h3>
                     <p style="margin: 5px 0 0; opacity: 0.9;">${game.grade} • ${game.subject}</p>
+                    ${!game.available ? '<div style="margin-top: 10px; padding: 8px 16px; background: rgba(245, 158, 11, 0.2); border-radius: 20px; font-size: 0.9rem; font-weight: 600;">Coming Soon</div>' : ''}
                 </div>
             `;
-            gamePreviewContent.style.background = `linear-gradient(135deg, var(--primary), var(--primary-dark))`;
+            
+            gamePreviewContent.style.background = game.available 
+                ? `linear-gradient(135deg, var(--primary), var(--primary-dark))`
+                : `linear-gradient(135deg, var(--gray-600), var(--gray-700))`;
+            
+            // Update button
+            startGameBtn.disabled = !game.available;
+            startGameBtn.innerHTML = game.available 
+                ? '<i class="fas fa-play"></i> Start Game'
+                : '<i class="fas fa-clock"></i> Coming Soon';
             
             // Show modal
             gameModal.classList.add('active');
@@ -1488,7 +1499,7 @@
 
         // Start selected game
         function startGame() {
-            if (!currentGame) return;
+            if (!currentGame || !currentGame.available) return;
             
             // Record game play
             const stats = JSON.parse(localStorage.getItem('user_game_stats') || '{}');
@@ -1497,35 +1508,10 @@
             localStorage.setItem('user_game_stats', JSON.stringify(stats));
             
             // Update display
-            gamesPlayedEl.textContent = stats.gamesPlayed;
+            gamesPlayedEl.textContent = parseInt(gamesPlayedEl.textContent) + 1;
             
             // Redirect to game page
             window.location.href = currentGame.link;
-        }
-
-        // Load user stats
-        function loadUserStats() {
-            const stats = JSON.parse(localStorage.getItem('user_game_stats') || '{}');
-            
-            // Initialize if not exists
-            if (!stats.gamesPlayed) {
-                stats.gamesPlayed = 0;
-                stats.highScore = 0;
-                stats.totalScore = 0;
-                stats.playTime = 0; // in minutes
-            }
-            
-            // Calculate total play time in hours
-            const playTimeHours = Math.floor(stats.playTime / 60);
-            
-            // Update displays
-            gamesPlayedEl.textContent = stats.gamesPlayed;
-            highScoreEl.textContent = stats.highScore.toLocaleString();
-            userScoreEl.textContent = stats.totalScore.toLocaleString();
-            playTimeEl.textContent = playTimeHours;
-            
-            // Save updated stats
-            localStorage.setItem('user_game_stats', JSON.stringify(stats));
         }
 
         // Setup event listeners
