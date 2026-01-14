@@ -1267,32 +1267,29 @@
                                 </div>
                             </div>
                             
-                            <div class="assignment-actions">
-                                <button class="btn-info view-submissions-btn" data-assignment-id="<?php echo $assignment['id']; ?>">
-                                    <i class="fas fa-eye"></i>
-                                    View Submissions
-                                </button>
-                                <button class="btn-success grade-assignments-btn" data-assignment-id="<?php echo $assignment['id']; ?>">
-                                    <i class="fas fa-check-circle"></i>
-                                    Grade Assignments
-                                </button>
-                                <button class="btn-primary edit-assignment-btn" data-assignment-id="<?php echo $assignment['id']; ?>">
-                                    <i class="fas fa-edit"></i>
-                                    Edit Assignment
-                                </button>
-                                <form method="POST" action="" style="display: inline;">
-                                    <input type="hidden" name="assignment_id" value="<?php echo $assignment['id']; ?>">
-                                    <input type="hidden" name="action" value="delete_assignment">
-                                    <button type="submit" class="btn-danger delete-assignment-btn" onclick="return confirm('Are you sure you want to delete this assignment? This will also delete all submissions.')">
-                                        <i class="fas fa-trash"></i>
-                                        Delete
-                                    </button>
-                                </form>
-                                <a href="assignment_analytics.php?id=<?php echo $assignment['id']; ?>" class="btn-secondary">
-                                    <i class="fas fa-chart-bar"></i>
-                                    Analytics
-                                </a>
-                            </div>
+                            <!-- Update the assignment actions section in teacher_assignment.php -->
+<div class="assignment-actions">
+    <a href="view_submissions.php?id=<?php echo $assignment['id']; ?>" class="btn-info">
+        <i class="fas fa-eye"></i>
+        View Submissions
+    </a>
+    <a href="grade_assignments.php?id=<?php echo $assignment['id']; ?>" class="btn-success">
+        <i class="fas fa-check-circle"></i>
+        Grade Assignments
+    </a>
+    <button class="btn-primary edit-assignment-btn" data-assignment-id="<?php echo $assignment['id']; ?>">
+        <i class="fas fa-edit"></i>
+        Edit Assignment
+    </button>
+    <button class="btn-danger delete-assignment-btn" data-assignment-id="<?php echo $assignment['id']; ?>">
+        <i class="fas fa-trash"></i>
+        Delete
+    </button>
+    <a href="assignment_analytics.php?id=<?php echo $assignment['id']; ?>" class="btn-secondary">
+        <i class="fas fa-chart-bar"></i>
+        Analytics
+    </a>
+</div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -1556,7 +1553,7 @@
         document.querySelectorAll('.edit-assignment-btn').forEach(button => {
             button.addEventListener('click', function() {
                 const assignmentId = this.getAttribute('data-assignment-id');
-                alert(`Editing assignment ID: ${assignmentId}\n\nThis would open an edit form in a real application.`);
+               
             });
         });
         
@@ -1598,6 +1595,51 @@
         
         // Check due dates on load
         checkDueDates();
+
+
+        // Edit Assignment Modal
+const editModal = document.createElement('div');
+editModal.innerHTML = `
+    <div class="modal" id="editAssignmentModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Assignment</h3>
+                <button class="close-modal" id="closeEditModal">&times;</button>
+            </div>
+            <div class="modal-body" id="editModalBody">
+                <p>Loading...</p>
+            </div>
+        </div>
+    </div>
+`;
+document.body.appendChild(editModal);
+
+document.querySelectorAll('.edit-assignment-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const assignmentId = this.getAttribute('data-assignment-id');
+        fetch(`edit_assignment.php?id=${assignmentId}`)
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('editModalBody').innerHTML = html;
+                document.getElementById('editAssignmentModal').classList.add('active');
+            });
+    });
+});
+
+document.getElementById('closeEditModal').addEventListener('click', () => {
+    document.getElementById('editAssignmentModal').classList.remove('active');
+});
+
+// Delete Confirmation
+document.querySelectorAll('.delete-assignment-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const assignmentId = this.getAttribute('data-assignment-id');
+        if (confirm('Are you sure you want to delete this assignment? This will also delete all submissions.')) {
+            window.location.href = `delete_assignment.php?id=${assignmentId}`;
+        }
+    });
+});
+
     </script>
 </body>
 </html>
