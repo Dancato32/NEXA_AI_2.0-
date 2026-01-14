@@ -1,10 +1,63 @@
   <?php
     session_start();
+    
+    // Check if user is logged in as teacher
     if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'teacher') {
         header('Location: ../Frontend/login.php');
         exit();
     }
-    ?>
+
+    // Get teacher information
+    $teacher_id = $_SESSION['user_id'];
+    $teacher_name = $_SESSION['first_name'] . ' ' . $_SESSION['last_name'];
+    $teacher_subject = $_SESSION['subject'] ?? 'Teacher';
+    $teacher_email = $_SESSION['email'];
+    
+    // Database connection
+    require_once '../includes/config.php';
+    
+    // Get classes this teacher teaches
+    $classes_query = "SELECT class_name FROM teacher_class_relationship WHERE teacher_id = ? ORDER BY class_name";
+    $stmt = mysqli_prepare($conn, $classes_query);
+    mysqli_stmt_bind_param($stmt, 'i', $teacher_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $teacher_classes = [];
+    
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $teacher_classes[] = $row['class_name'];
+        }
+    }
+    mysqli_stmt_close($stmt);
+    
+    // Get total students in teacher's classes
+    $students_count = 0;
+    if (!empty($teacher_classes)) {
+        $class_list = "'" . implode("','", $teacher_classes) . "'";
+        $students_query = "SELECT COUNT(*) as total FROM student_details WHERE Class IN ($class_list)";
+        $result = mysqli_query($conn, $students_query);
+        if ($result) {
+            $row = mysqli_fetch_assoc($result);
+            $students_count = $row['total'];
+        }
+    }
+    
+    // Get teacher's assignments count
+    $assignments_query = "SELECT COUNT(*) as total FROM assignments WHERE teacher_id = ?";
+    $stmt = mysqli_prepare($conn, $assignments_query);
+    mysqli_stmt_bind_param($stmt, 'i', $teacher_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $assignments_count = 0;
+    if ($result) {
+        $row = mysqli_fetch_assoc($result);
+        $assignments_count = $row['total'];
+    }
+    mysqli_stmt_close($stmt);
+    
+    mysqli_close($conn);
+?>
 
 
 <!DOCTYPE html>

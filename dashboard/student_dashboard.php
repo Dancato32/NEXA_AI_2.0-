@@ -1,10 +1,122 @@
- <?php
+
+<?php
     session_start();
     if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'student') {
         header('Location: ../Frontend/login.php');
         exit();
     }
-    ?>
+    
+    // Get student information
+    $student_id = $_SESSION['user_id'];
+    $student_name = $_SESSION['first_name'] . ' ' . $_SESSION['last_name'];
+    $student_class = $_SESSION['class'] ?? 'Not specified';
+    
+    // Database connection
+    require_once '../includes/config.php';
+    
+    // Get user's game stats from database
+    $stats_query = "SELECT 
+        COUNT(DISTINCT game_name) as total_games_played,
+        COALESCE(SUM(score), 0) as total_score,
+        COALESCE(SUM(play_time), 0) as total_play_time,
+        COUNT(*) as total_games
+    FROM game_scores 
+    WHERE student_id = ?";
+    
+    $stmt = mysqli_prepare($conn, $stats_query);
+    mysqli_stmt_bind_param($stmt, 'i', $student_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $user_stats = mysqli_fetch_assoc($result) ?? [];
+    mysqli_stmt_close($stmt);
+    
+    // Get recent games played
+    $recent_games_query = "SELECT 
+        gs.game_name,
+        gs.score,
+        gs.level,
+        gs.accuracy,
+        gs.created_at,
+        gs.problems_solved,
+        CASE 
+            WHEN gs.game_name = 'math-blaster' THEN 'Math Blaster'
+            WHEN gs.game_name = 'word-master' THEN 'Word Master'
+            WHEN gs.game_name = 'memory-match' THEN 'Memory Match'
+            ELSE gs.game_name
+        END as game_title,
+        CASE 
+            WHEN gs.game_name = 'math-blaster' THEN 'fa-calculator'
+            WHEN gs.game_name = 'word-master' THEN 'fa-book'
+            WHEN gs.game_name = 'memory-match' THEN 'fa-brain'
+            ELSE 'fa-gamepad'
+        END as game_icon
+    FROM game_scores gs
+    WHERE gs.student_id = ?
+    ORDER BY gs.created_at DESC
+    LIMIT 3";
+    
+    $stmt = mysqli_prepare($conn, $recent_games_query);
+    mysqli_stmt_bind_param($stmt, 'i', $student_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $recent_games = [];
+    
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $recent_games[] = $row;
+        }
+    }
+    mysqli_stmt_close($stmt);
+    
+    // Get leaderboard rank
+    $rank_query = "SELECT 
+        rank_position
+    FROM (
+        SELECT 
+            s.id,
+            s.firstName,
+            s.lastName,
+            COALESCE(SUM(g.score), 0) as total_score,
+            ROW_NUMBER() OVER (ORDER BY COALESCE(SUM(g.score), 0) DESC) as rank_position
+        FROM student_details s
+        LEFT JOIN game_scores g ON s.id = g.student_id
+        GROUP BY s.id, s.firstName, s.lastName
+    ) as rankings
+    WHERE id = ?";
+    
+    $stmt = mysqli_prepare($conn, $rank_query);
+    mysqli_stmt_bind_param($stmt, 'i', $student_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $rank_data = mysqli_fetch_assoc($result);
+    $user_rank = $rank_data['rank_position'] ?? 0;
+    mysqli_stmt_close($stmt);
+    
+    // Calculate stats
+    $total_score = $user_stats['total_score'] ?? 0;
+    $games_played = $user_stats['total_games_played'] ?? 0;
+    $total_games = $user_stats['total_games'] ?? 0;
+    $play_time_minutes = $user_stats['total_play_time'] ?? 0;
+    $play_time_hours = floor($play_time_minutes / 60);
+    $play_time_minutes = $play_time_minutes % 60;
+    
+    // Get achievements count (simplified - you can create an achievements table)
+    $achievements_query = "SELECT 
+        COUNT(DISTINCT game_name) as achievements
+    FROM game_scores 
+    WHERE student_id = ? AND score > 50";
+    
+    $stmt = mysqli_prepare($conn, $achievements_query);
+    mysqli_stmt_bind_param($stmt, 'i', $student_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $achievements_data = mysqli_fetch_assoc($result);
+    $achievements_count = $achievements_data['achievements'] ?? 0;
+    mysqli_stmt_close($stmt);
+    
+    // Close connection
+    mysqli_close($conn);
+?>
 
 <!DOCTYPE html>
 <html lang="en">
@@ -20,10 +132,12 @@
         :root {
             --primary: #4F46E5;
             --primary-light: #6366F1;
-            --secondary: #10B981;
+            --primary-dark: #1d4ed8;
+            --secondary: #10b981;
             --accent: #F59E0B;
             --pink: #EC4899;
             --purple: #8B5CF6;
+            --cyan: #06b6d4;
             --black: #111827;
             --dark-gray: #374151;
             --medium-gray: #6B7280;
@@ -397,8 +511,8 @@
             color: #EF4444;
         }
 
-        /* Courses Grid */
-        .courses-section {
+        /* Recent Games Section */
+        .games-section {
             margin-bottom: 40px;
         }
 
@@ -429,100 +543,129 @@
             gap: 12px;
         }
 
-        .courses-grid {
+        .games-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 25px;
         }
 
-        .course-card {
+        .game-card {
             background: var(--white);
             border-radius: 16px;
             overflow: hidden;
             box-shadow: var(--shadow);
             transition: var(--transition);
+            border: 1px solid var(--border);
         }
 
-        .course-card:hover {
+        .game-card:hover {
             transform: translateY(-5px);
             box-shadow: var(--shadow-lg);
+            border-color: var(--primary);
         }
 
-        .course-image {
-            height: 180px;
-            background: linear-gradient(135deg, var(--primary), var(--purple));
-            position: relative;
-        }
-
-        .course-category {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: var(--white);
-            color: var(--primary);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-
-        .course-content {
+        .game-header {
             padding: 25px;
-        }
-
-        .course-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
-
-        .course-description {
-            color: var(--medium-gray);
-            font-size: 0.95rem;
-            margin-bottom: 20px;
-            line-height: 1.6;
-        }
-
-        .course-progress {
-            margin-bottom: 20px;
-        }
-
-        .progress-bar {
-            height: 8px;
-            background: var(--border);
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 8px;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--purple));
-            border-radius: 4px;
-            transition: width 1s ease-out;
-        }
-
-        .progress-info {
+            border-bottom: 1px solid var(--border);
             display: flex;
-            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .game-icon {
+            width: 70px;
+            height: 70px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: var(--white);
+        }
+
+        .game-icon.math { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); }
+        .game-icon.word { background: linear-gradient(135deg, var(--accent), #d97706); }
+        .game-icon.memory { background: linear-gradient(135deg, var(--purple), #7c3aed); }
+        .game-icon.other { background: linear-gradient(135deg, var(--cyan), #0891b2); }
+
+        .game-info h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--black);
+            margin-bottom: 5px;
+        }
+
+        .game-info p {
             font-size: 0.9rem;
             color: var(--medium-gray);
         }
 
-        .course-actions {
+        .game-body {
+            padding: 25px;
+        }
+
+        .game-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .game-stat {
+            text-align: center;
+            padding: 15px;
+            background: var(--light-gray);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .game-stat-value {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--black);
+            margin-bottom: 5px;
+        }
+
+        .game-stat-label {
+            font-size: 0.85rem;
+            color: var(--medium-gray);
+        }
+
+        .game-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            font-size: 0.9rem;
+            color: var(--medium-gray);
+        }
+
+        .game-date {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .game-actions {
             display: flex;
             gap: 10px;
         }
 
         .btn-primary, .btn-secondary {
-            flex: 1;
-            padding: 12px;
+            padding: 10px 20px;
             border-radius: 10px;
             font-weight: 600;
             cursor: pointer;
             transition: var(--transition);
             border: none;
             font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .btn-primary {
@@ -547,50 +690,52 @@
             color: var(--primary);
         }
 
-        /* Recent Activity */
-        .activity-list {
+        /* Quick Actions */
+        .quick-actions {
             background: var(--white);
-            border-radius: 16px;
-            overflow: hidden;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 40px;
             box-shadow: var(--shadow);
         }
 
-        .activity-item {
+        .quick-actions h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: var(--black);
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .action-btn {
             display: flex;
             align-items: center;
-            gap: 20px;
-            padding: 20px 25px;
-            border-bottom: 1px solid var(--border);
+            gap: 15px;
+            padding: 20px;
+            background: var(--light-gray);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            color: var(--dark-gray);
+            text-decoration: none;
+            font-weight: 500;
             transition: var(--transition);
         }
 
-        .activity-item:hover {
-            background: var(--light-gray);
+        .action-btn:hover {
+            background: var(--white);
+            border-color: var(--primary);
+            color: var(--primary);
+            transform: translateY(-2px);
         }
 
-        .activity-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.3rem;
-            color: var(--white);
-        }
-
-        .activity-content {
-            flex: 1;
-        }
-
-        .activity-title {
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .activity-time {
-            color: var(--medium-gray);
-            font-size: 0.9rem;
+        .action-btn i {
+            font-size: 1.5rem;
+            color: var(--primary);
         }
 
         /* AI Assistant */
@@ -667,6 +812,33 @@
             box-shadow: 0 8px 20px rgba(245, 158, 11, 0.3);
         }
 
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            background: var(--white);
+            border-radius: 16px;
+            border: 2px dashed var(--border);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            color: var(--medium-gray);
+            margin-bottom: 20px;
+        }
+
+        .empty-state h3 {
+            font-size: 1.5rem;
+            color: var(--dark-gray);
+            margin-bottom: 10px;
+        }
+
+        .empty-state p {
+            color: var(--medium-gray);
+            max-width: 400px;
+            margin: 0 auto 20px;
+        }
+
         /* Responsive */
         @media (max-width: 1200px) {
             .sidebar {
@@ -699,7 +871,7 @@
         }
 
         @media (max-width: 768px) {
-            .stats-grid, .courses-grid {
+            .stats-grid, .games-grid {
                 grid-template-columns: 1fr;
             }
             .top-bar {
@@ -712,12 +884,16 @@
             .welcome-banner h1 {
                 font-size: 2rem;
             }
+            .game-stats {
+                grid-template-columns: 1fr;
+            }
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
-   
-
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
@@ -733,8 +909,8 @@
                     <i class="fas fa-user-graduate"></i>
                 </div>
                 <div class="user-info">
-                    <h3><?php echo htmlspecialchars($_SESSION['first_name'] . ' ' . $_SESSION['last_name']); ?></h3>
-                    <p>Student • Class <?php echo htmlspecialchars($_SESSION['class']); ?></p>
+                    <h3><?php echo htmlspecialchars($student_name); ?></h3>
+                    <p>Student • Class <?php echo htmlspecialchars($student_class); ?></p>
                 </div>
             </div>
         </div>
@@ -744,19 +920,18 @@
                 <i class="fas fa-home"></i>
                 <span class="nav-label">Dashboard</span>
             </a>
-            <a href="#" class="nav-item">
-                <i class="fas fa-book-open"></i>
-                <span class="nav-label">My Courses</span>
-                <span class="badge">3</span>
-            </a>
             <a href="games.php" class="nav-item">
                 <i class="fas fa-gamepad"></i>
                 <span class="nav-label">Learning Games</span>
+                <span class="badge"><?php echo $games_played; ?></span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="student_ai_tutor.php" class="nav-item">
+                <i class="fas fa-robot"></i>
+                <span class="nav-label">AI Tutor</span>
+            </a>
+            <a href="student_assignment.php" class="nav-item">
                 <i class="fas fa-tasks"></i>
                 <span class="nav-label">Assignments</span>
-                <span class="badge">5</span>
             </a>
             <a href="#" class="nav-item">
                 <i class="fas fa-chart-line"></i>
@@ -765,15 +940,9 @@
             <a href="#" class="nav-item">
                 <i class="fas fa-trophy"></i>
                 <span class="nav-label">Achievements</span>
+                <span class="badge"><?php echo $achievements_count; ?></span>
             </a>
-            <a href="student_ai_tutor.php" class="nav-item">
-                <i class="fas fa-robot"></i>
-                <span class="nav-label">AI Tutor</span>
-            </a>
-            <a href="#" class="nav-item">
-                <i class="fas fa-calendar-alt"></i>
-                <span class="nav-label">Schedule</span>
-            </a>
+            
             <a href="#" class="nav-item">
                 <i class="fas fa-cog"></i>
                 <span class="nav-label">Settings</span>
@@ -791,13 +960,13 @@
             
             <div class="search-bar">
                 <i class="fas fa-search"></i>
-                <input type="text" placeholder="Search for lessons, games, or help...">
+                <input type="text" placeholder="Search games, lessons, or help...">
             </div>
             
             <div class="top-actions">
                 <button class="notification-btn">
                     <i class="fas fa-bell"></i>
-                    <span class="notification-badge">3</span>
+                    <span class="notification-badge"><?php echo $games_played > 0 ? min($games_played, 9) : '0'; ?></span>
                 </button>
                 <a href="../auth/logout.php" class="logout-btn">
                     <i class="fas fa-sign-out-alt"></i>
@@ -808,8 +977,8 @@
         <!-- Welcome Banner -->
         <div class="welcome-banner">
             <div class="banner-shapes"></div>
-            <h1>Welcome back, <?php echo htmlspecialchars($_SESSION['first_name']); ?>! 👋</h1>
-            <p>Ready to continue your learning adventure? You have 3 new assignments and 2 games to play today.</p>
+            <h1>Welcome back, <?php echo htmlspecialchars($_SESSION['first_name']); ?>! 🎮</h1>
+            <p>Ready for some brain training? You've played <?php echo $games_played; ?> games with a total score of <?php echo number_format($total_score); ?> points!</p>
         </div>
 
         <!-- Stats Grid -->
@@ -817,194 +986,174 @@
             <div class="stat-card blue">
                 <div class="stat-header">
                     <div class="stat-icon">
-                        <i class="fas fa-gamepad"></i>
+                        <i class="fas fa-trophy"></i>
                     </div>
                     <div class="stat-trend trend-up">
                         <i class="fas fa-arrow-up"></i>
-                        <span>12%</span>
+                        <span>#<?php echo $user_rank > 0 ? $user_rank : 'NR'; ?></span>
                     </div>
                 </div>
-                <div class="stat-number">85%</div>
-                <div class="stat-label">Game Completion</div>
+                <div class="stat-number"><?php echo number_format($total_score); ?></div>
+                <div class="stat-label">Total Score</div>
+                <div class="stat-trend">
+                    <span>Rank #<?php echo $user_rank > 0 ? $user_rank : 'Not Ranked'; ?></span>
+                </div>
             </div>
             
             <div class="stat-card green">
                 <div class="stat-header">
                     <div class="stat-icon">
-                        <i class="fas fa-tasks"></i>
+                        <i class="fas fa-gamepad"></i>
                     </div>
                     <div class="stat-trend trend-up">
                         <i class="fas fa-arrow-up"></i>
-                        <span>8%</span>
+                        <span><?php echo $total_games; ?> games</span>
                     </div>
                 </div>
-                <div class="stat-number">92%</div>
-                <div class="stat-label">Assignment Score</div>
+                <div class="stat-number"><?php echo $games_played; ?></div>
+                <div class="stat-label">Games Played</div>
+                <div class="stat-trend">
+                    <span><?php echo $total_games; ?> sessions total</span>
+                </div>
             </div>
             
             <div class="stat-card orange">
                 <div class="stat-header">
                     <div class="stat-icon">
-                        <i class="fas fa-trophy"></i>
+                        <i class="fas fa-clock"></i>
                     </div>
                     <div class="stat-trend trend-up">
                         <i class="fas fa-arrow-up"></i>
-                        <span>15%</span>
+                        <span>+<?php echo $play_time_minutes; ?>m</span>
                     </div>
                 </div>
-                <div class="stat-number">24</div>
-                <div class="stat-label">Badges Earned</div>
+                <div class="stat-number"><?php echo $play_time_hours; ?>h</div>
+                <div class="stat-label">Learning Time</div>
+                <div class="stat-trend">
+                    <span><?php echo $play_time_minutes; ?> minutes</span>
+                </div>
             </div>
             
             <div class="stat-card pink">
                 <div class="stat-header">
                     <div class="stat-icon">
-                        <i class="fas fa-clock"></i>
+                        <i class="fas fa-brain"></i>
                     </div>
-                    <div class="stat-trend trend-down">
-                        <i class="fas fa-arrow-down"></i>
-                        <span>5%</span>
+                    <div class="stat-trend trend-up">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>+<?php echo $achievements_count; ?></span>
                     </div>
                 </div>
-                <div class="stat-number">36h</div>
-                <div class="stat-label">Learning Time</div>
+                <div class="stat-number"><?php echo $achievements_count; ?></div>
+                <div class="stat-label">Achievements</div>
+                <div class="stat-trend">
+                    <span>Keep playing to earn more!</span>
+                </div>
             </div>
         </div>
 
-        <!-- Courses Section -->
-        <div class="courses-section">
+        <!-- Recent Games Section -->
+        <div class="games-section">
             <div class="section-header">
-                <h2>My Courses</h2>
-                <a href="#" class="view-all">
-                    View All
+                <h2>Recent Games</h2>
+                <a href="games.php" class="view-all">
+                    View All Games
                     <i class="fas fa-arrow-right"></i>
                 </a>
             </div>
             
-            <div class="courses-grid">
-                <div class="course-card">
-                    <div class="course-image">
-                        <span class="course-category">Mathematics</span>
-                    </div>
-                    <div class="course-content">
-                        <h3 class="course-title">Algebra Made Fun</h3>
-                        <p class="course-description">Learn algebra through interactive games and real-world problems.</p>
+            <?php if (!empty($recent_games)): ?>
+                <div class="games-grid">
+                    <?php foreach ($recent_games as $game): ?>
+                        <?php 
+                        // Determine icon class based on game type
+                        $icon_class = 'other';
+                        if (strpos(strtolower($game['game_title']), 'math') !== false) $icon_class = 'math';
+                        if (strpos(strtolower($game['game_title']), 'word') !== false) $icon_class = 'word';
+                        if (strpos(strtolower($game['game_title']), 'memory') !== false) $icon_class = 'memory';
                         
-                        <div class="course-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: 75%"></div>
+                        // Format date
+                        $game_date = date('M d, Y', strtotime($game['created_at']));
+                        $game_time = date('h:i A', strtotime($game['created_at']));
+                        ?>
+                        
+                        <div class="game-card">
+                            <div class="game-header">
+                                <div class="game-icon <?php echo $icon_class; ?>">
+                                    <i class="fas <?php echo $game['game_icon']; ?>"></i>
+                                </div>
+                                <div class="game-info">
+                                    <h3><?php echo htmlspecialchars($game['game_title']); ?></h3>
+                                    <p>Game Session • Level <?php echo $game['level']; ?></p>
+                                </div>
                             </div>
-                            <div class="progress-info">
-                                <span>Progress</span>
-                                <span>75%</span>
+                            
+                            <div class="game-body">
+                                <div class="game-stats">
+                                    <div class="game-stat">
+                                        <div class="game-stat-value"><?php echo number_format($game['score']); ?></div>
+                                        <div class="game-stat-label">Score</div>
+                                    </div>
+                                    
+                                    <div class="game-stat">
+                                        <div class="game-stat-value"><?php echo $game['problems_solved']; ?></div>
+                                        <div class="game-stat-label">Solved</div>
+                                    </div>
+                                    
+                                    <div class="game-stat">
+                                        <div class="game-stat-value"><?php echo $game['accuracy']; ?>%</div>
+                                        <div class="game-stat-label">Accuracy</div>
+                                    </div>
+                                    
+                                    <div class="game-stat">
+                                        <div class="game-stat-value"><?php echo $game['level']; ?></div>
+                                        <div class="game-stat-label">Level</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="game-meta">
+                                    <div class="game-date">
+                                        <i class="far fa-calendar"></i>
+                                        <span><?php echo $game_date; ?> at <?php echo $game_time; ?></span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div class="course-actions">
-                            <button class="btn-primary">Continue</button>
-                            <button class="btn-secondary">View Details</button>
-                        </div>
-                    </div>
+                    <?php endforeach; ?>
                 </div>
-                
-                <div class="course-card">
-                    <div class="course-image">
-                        <span class="course-category">Science</span>
-                    </div>
-                    <div class="course-content">
-                        <h3 class="course-title">Physics Adventures</h3>
-                        <p class="course-description">Discover the wonders of physics with experiments and simulations.</p>
-                        
-                        <div class="course-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: 60%"></div>
-                            </div>
-                            <div class="progress-info">
-                                <span>Progress</span>
-                                <span>60%</span>
-                            </div>
-                        </div>
-                        
-                        <div class="course-actions">
-                            <button class="btn-primary">Continue</button>
-                            <button class="btn-secondary">View Details</button>
-                        </div>
-                    </div>
+            <?php else: ?>
+                <div class="empty-state">
+                    <i class="fas fa-gamepad"></i>
+                    <h3>No Games Played Yet</h3>
+                    <p>Start your learning journey by playing some educational games!</p>
+                    <a href="games.php" class="btn-primary" style="text-decoration: none; margin-top: 20px;">
+                        <i class="fas fa-play"></i>
+                        Play Games Now
+                    </a>
                 </div>
-                
-                <div class="course-card">
-                    <div class="course-image">
-                        <span class="course-category">English</span>
-                    </div>
-                    <div class="course-content">
-                        <h3 class="course-title">Grammar Games</h3>
-                        <p class="course-description">Master English grammar through fun games and challenges.</p>
-                        
-                        <div class="course-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: 90%"></div>
-                            </div>
-                            <div class="progress-info">
-                                <span>Progress</span>
-                                <span>90%</span>
-                            </div>
-                        </div>
-                        
-                        <div class="course-actions">
-                            <button class="btn-primary">Continue</button>
-                            <button class="btn-secondary">View Details</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <?php endif; ?>
         </div>
 
-        <!-- Recent Activity -->
-        <div class="courses-section">
-            <div class="section-header">
-                <h2>Recent Activity</h2>
-            </div>
-            
-            <div class="activity-list">
-                <div class="activity-item">
-                    <div class="activity-icon" style="background: linear-gradient(135deg, var(--primary), var(--purple));">
-                        <i class="fas fa-gamepad"></i>
-                    </div>
-                    <div class="activity-content">
-                        <div class="activity-title">Completed Math Puzzle Game</div>
-                        <div class="activity-time">10 minutes ago • Scored 95%</div>
-                    </div>
-                </div>
-                
-                <div class="activity-item">
-                    <div class="activity-icon" style="background: linear-gradient(135deg, var(--secondary), #34D399);">
-                        <i class="fas fa-tasks"></i>
-                    </div>
-                    <div class="activity-content">
-                        <div class="activity-title">Submitted Science Assignment</div>
-                        <div class="activity-time">2 hours ago • Waiting for review</div>
-                    </div>
-                </div>
-                
-                <div class="activity-item">
-                    <div class="activity-icon" style="background: linear-gradient(135deg, var(--accent), #FBBF24);">
-                        <i class="fas fa-trophy"></i>
-                    </div>
-                    <div class="activity-content">
-                        <div class="activity-title">Earned "Math Master" Badge</div>
-                        <div class="activity-time">Yesterday • 5:30 PM</div>
-                    </div>
-                </div>
-                
-                <div class="activity-item">
-                    <div class="activity-icon" style="background: linear-gradient(135deg, var(--pink), var(--purple));">
-                        <i class="fas fa-robot"></i>
-                    </div>
-                    <div class="activity-content">
-                        <div class="activity-title">Asked AI Tutor for help</div>
-                        <div class="activity-time">Yesterday • 4:15 PM</div>
-                    </div>
-                </div>
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <h3>Quick Actions</h3>
+            <div class="action-buttons">
+                <a href="games.php" class="action-btn">
+                    <i class="fas fa-play-circle"></i>
+                    <span>Play New Game</span>
+                </a>
+                <a href="games.php?category=math" class="action-btn">
+                    <i class="fas fa-calculator"></i>
+                    <span>Math Games</span>
+                </a>
+                <a href="games.php?category=english" class="action-btn">
+                    <i class="fas fa-book"></i>
+                    <span>Word Games</span>
+                </a>
+                <a href="games.php?category=memory" class="action-btn">
+                    <i class="fas fa-brain"></i>
+                    <span>Memory Games</span>
+                </a>
             </div>
         </div>
 
@@ -1014,10 +1163,10 @@
                 <i class="fas fa-robot"></i>
             </div>
             <h3>Need help? Ask Nexa AI</h3>
-            <p>Your personal AI tutor is here to help with homework, explain concepts, or answer questions.</p>
+            <p>Your personal AI tutor is here to help with homework, explain concepts, or answer questions about your games.</p>
             
             <div class="ai-input">
-                <input type="text" placeholder="Ask me anything about your lessons...">
+                <input type="text" placeholder="Ask me anything about math, words, or memory games...">
                 <button>
                     <i class="fas fa-paper-plane"></i>
                     Ask
@@ -1055,41 +1204,52 @@
                 }, 300);
             });
             
-            // Update time
-            function updateTime() {
+            // AI Assistant interaction
+            const aiInput = document.querySelector('.ai-input input');
+            const aiButton = document.querySelector('.ai-input button');
+            
+            aiButton.addEventListener('click', () => {
+                if (aiInput.value.trim()) {
+                    alert(`Nexa AI: "I received your question: "${aiInput.value}". I'm thinking..."`);
+                    aiInput.value = '';
+                }
+            });
+            
+            aiInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    aiButton.click();
+                }
+            });
+            
+            // Notification click
+            document.querySelector('.notification-btn').addEventListener('click', () => {
+                alert('You have new game notifications!\nCheck your recent games for updates.');
+            });
+            
+            // Game card hover effects
+            const gameCards = document.querySelectorAll('.game-card');
+            gameCards.forEach(card => {
+                card.addEventListener('mouseenter', () => {
+                    card.style.transform = 'translateY(-5px)';
+                });
+                
+                card.addEventListener('mouseleave', () => {
+                    card.style.transform = 'translateY(0)';
+                });
+            });
+            
+            // Auto-refresh stats every 30 seconds (if new games played)
+            setInterval(() => {
+                // This would typically make an AJAX call to refresh stats
+                // For now, just update the time display
                 const now = new Date();
-                const timeElements = document.querySelectorAll('.activity-time');
+                const timeElements = document.querySelectorAll('.game-date');
                 timeElements.forEach(el => {
-                    if (el.textContent.includes('minutes ago')) {
-                        const minutes = Math.floor(Math.random() * 60);
-                        el.textContent = `${minutes} minutes ago`;
+                    if (el.textContent.includes('ago')) {
+                        // Update relative time if needed
                     }
                 });
-            }
-            updateTime();
-            setInterval(updateTime, 60000);
-        });
-        
-        // AI Assistant interaction
-        const aiInput = document.querySelector('.ai-input input');
-        const aiButton = document.querySelector('.ai-input button');
-        
-        aiButton.addEventListener('click', () => {
-            if (aiInput.value.trim()) {
-                alert(`Nexa AI: "I received your question: "${aiInput.value}". I'm thinking..."`);
-                aiInput.value = '';
-            }
-        });
-        
-        aiInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                aiButton.click();
-            }
-        });
-        
-        // Notification click
-        document.querySelector('.notification-btn').addEventListener('click', () => {
-            alert('You have 3 new notifications:\n1. New math game available\n2. Assignment due tomorrow\n3. New badge unlocked!');
+            }, 30000);
         });
     </script>
 </body>
